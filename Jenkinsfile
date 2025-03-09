@@ -4,6 +4,7 @@ pipeline {
     environment {
         AWS_REGION = "us-east-1"
         S3_BUCKET = "fotographiya-ai-photo-bucket"
+        IMAGE_NAME = "fotographiya-ai-processor"
     }
 
     stages {
@@ -13,17 +14,24 @@ pipeline {
             }
         }
 
-        stage('Install Dependencies') {
+        stage('Build Docker Image') {
             steps {
-                sh 'echo "" | sudo -S apt update && sudo apt install -y python3-pip'
-                sh 'sudo apt update && sudo apt install -y python3-pip'
-                sh 'pip3 install pillow boto3'
+                sh 'docker build -t $IMAGE_NAME .'
             }
         }
 
-        stage('Run AI Processing') {
+        stage('Run Docker Container') {
             steps {
-                sh 'python3 app.py'
+                sh 'docker run --rm -e AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY $IMAGE_NAME'
+            }
+        }
+
+        stage('Push Docker Image to Docker Hub') {
+            steps {
+                withDockerRegistry([credentialsId: 'docker-hub-credentials', url: '']) {
+                    sh 'docker tag $IMAGE_NAME harshhg156/$IMAGE_NAME:latest'
+                    sh 'docker push harshhg156/$IMAGE_NAME:latest'
+                }
             }
         }
     }
