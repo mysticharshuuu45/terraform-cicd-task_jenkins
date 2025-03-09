@@ -44,19 +44,23 @@ def add_watermark(image):
     
     # Load Times New Roman font (fallback to default if unavailable)
     try:
-        font = ImageFont.truetype("times.ttf", 12)  # Ensure 'times.ttf' is available in the system
+        font = ImageFont.truetype("times.ttf", 12)  # Ensure 'times.ttf' is available
     except IOError:
         font = ImageFont.load_default()  # Use default font if Times New Roman is not found
 
     # Watermark text
     watermark_text = "Fotographiya"
     
-    # Get text size and set position (bottom-right corner)
-    text_width, text_height = draw.textsize(watermark_text, font)
+    # Get text size using textbbox()
+    bbox = draw.textbbox((0, 0), watermark_text, font=font)  # (left, top, right, bottom)
+    text_width = bbox[2] - bbox[0]  # Right - Left
+    text_height = bbox[3] - bbox[1]  # Bottom - Top
+
+    # Set position (bottom-right corner)
     width, height = image.size
     position = (width - text_width - 10, height - text_height - 10)  # 10px margin
 
-    # Draw text in solid black (Opaque)
+    # Draw opaque text
     draw.text(position, watermark_text, font=font, fill="black")
     
     return image
