@@ -1,72 +1,99 @@
-#!/usr/bin/env python
-# coding: utf-8
-
-import os
-from io import BytesIO
-from PIL import Image, ImageDraw, ImageFont
 import boto3
+import io
 import zipfile
+from PIL import Image
+import os
 
-class PhotoProcessor:
-    def __init__(self, input_dir="photos", watermark_text="Fotographiya", bucket_name="fotographiya-ai-photo-bucket"):
-        self.input_dir = input_dir
-        self.watermark_text = watermark_text
-        self.bucket_name = bucket_name
-        self.formats = [
-            ("web", (1920, 1080), "JPEG"),
-            ("mobile", (1080, 720), "JPEG"),
-            ("print", (300, 300), "PNG"),
-        ]
-        self.s3 = boto3.client('s3')
+# AWS Configuration
+S3_BUCKET_NAME = "fotographiya-ai-photo-bucket"
+S3_IMAGE_FOLDER = "processed-images/"  # Folder where images will be stored in S3
+S3_ZIP_FOLDER = "zipped-files/"  # Folder where ZIP file will be stored in S3
+ZIP_FILENAME = "processed_images.zip"  # Name of the ZIP file in S3
 
-    def get_font(self, size=60):
-        try:
-            return ImageFont.truetype("arial.ttf", size)
-        except:
-            return ImageFont.load_default()
+# Initialize S3 client
+s3 = boto3.client('s3')
 
-    def add_watermark(self, image):
-        draw = ImageDraw.Draw(image)
-        font = self.get_font(size=30)
-        bbox = draw.textbbox((0, 0), self.watermark_text, font=font)
-        text_width = bbox[2] - bbox[0]
-        text_height = bbox[3] - bbox[1]
-        x = image.width - text_width - 10
-        y = image.height - text_height - 10
-        draw.text((x, y), self.watermark_text, font=font, fill=(255, 255, 255, 128))
-        return image
+def process_and_upload_image(image_path, s3_folder):
+    """Processes the image and uploads different versions to S3."""
+    try:
+        with Image.open(image_path) as img:
+            # Define image versions
+            versions = {
+                "web": (800, 600),
+                "mobile": (400, 300),
+                "print": (1200, 900),
+            }
 
-    def process_image(self, img_path, filename):
-        img = Image.open(img_path)
-        for format_name, size, img_format in self.formats:
-            resized_img = img.copy().resize(size)
-            watermarked_img = self.add_watermark(resized_img)
-            
-            # Save image to memory instead of local file
-            img_buffer = BytesIO()
-            watermarked_img.save(img_buffer, format=img_format)
-            img_buffer.seek(0)
+            image_filenames = []
 
-            # Generate file name for S3
-            output_filename = f"{format_name}_{os.path.splitext(filename)[0]}.{img_format.lower()}"
+            for version, size in versions.items():
+                img_resized = img.copy()
+                img_resized.thumbnail(size)
 
-            # Upload directly to S3
-            self.upload_to_s3(img_buffer, output_filename, img_format)
+                # Convert image to bytes
+                img_byte_arr = io.BytesIO()
+                img_resized.save(img_byte_arr, format=img.format)
+                img_byte_arr.seek(0)
 
-    def upload_to_s3(self, img_buffer, file_name, img_format):
-        try:
-            self.s3.upload_fileobj(img_buffer, self.bucket_name, file_name, ExtraArgs={'ContentType': f"image/{img_format.lower()}"})
-            print(f"Uploaded {file_name} to S3")
-        except Exception as e:
-            print(f"Error uploading {file_name} to S3: {e}")
+                # S3 Key (Path in S3)
+                filename = f"{version}_{os.path.basename(image_path)}"
+                s3_key = f"{s3_folder}{filename}"
 
-    def process_batch(self):
-        for filename in os.listdir(self.input_dir):
-            if filename.lower().endswith((".jpg", ".jpeg", ".png")):
-                img_path = os.path.join(self.input_dir, filename)
-                self.process_image(img_path, filename)
-        print("Batch processing completed!")
+                # Upload to S3
+                s3.upload_fileobj(img_byte_arr, S3_BUCKET_NAME, s3_key)
+                print(f"Uploaded {filename} to S3: {s3_key}")
 
-if __name__ == "__main__":
-    processor = PhotoProcessor()
-    processor.process_batch()
+                image_filenames.append(s3_key)
+
+            return image_filenames  # Return list of uploaded images
+
+    except Exception as e:
+        print(f"Error processing {image_path}: {e}")
+        return []
+
+
+def create_zip_in_memory(image_files, s3_zip_folder):
+    """Creates a ZIP file in memory and uploads it to S3."""
+    zip_buffer = io.BytesIO()
+
+    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zipf:
+        for img in image_files:
+            try:
+                # Read image content from S3
+                s3_object = s3.get_object(Bucket=S3_BUCKET_NAME, Key=img)
+                img_data = s3_object['Body'].read()
+
+                # Write image data to zip
+                zipf.writestr(img.split('/')[-1], img_data)
+                print(f"Added {img} to ZIP")
+            except Exception as e:
+                print(f"Error adding {img} to ZIP: {e}")
+
+    zip_buffer.seek(0)
+
+    # Upload ZIP to S3
+    s3_key = f"{s3_zip_folder}{ZIP_FILENAME}"
+    try:
+        s3.upload_fileobj(zip_buffer, S3_BUCKET_NAME, s3_key)
+        print(f"Uploaded ZIP to s3://{S3_BUCKET_NAME}/{s3_key}")
+    except Exception as e:
+        print(f"Error uploading ZIP to S3: {e}")
+
+
+# List of images to process (Replace with actual paths of local images)
+local_images = [
+    "DSC_8767.jpeg",
+    "DSC_8764.jpeg",
+    "DSC_8757.jpeg"
+]
+
+# Process images and upload to S3
+uploaded_images = []
+for image in local_images:
+    uploaded_images.extend(process_and_upload_image(image, S3_IMAGE_FOLDER))
+
+# Create ZIP in memory and upload to S3
+if uploaded_images:
+    create_zip_in_memory(uploaded_images, S3_ZIP_FOLDER)
+else:
+    print("No images processed. Skipping ZIP creation.")
