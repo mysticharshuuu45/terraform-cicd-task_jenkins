@@ -8,7 +8,7 @@ import boto3
 import zipfile
 
 class PhotoProcessor:
-    def __init__(self, input_dir="photos", watermark_text="Fotographiya", bucket_name="fotographiya-processed-images"):
+    def __init__(self, input_dir="photos", watermark_text="Fotographiya", bucket_name="fotographiya-ai-photo-bucket"):
         self.input_dir = input_dir
         self.watermark_text = watermark_text
         self.bucket_name = bucket_name
