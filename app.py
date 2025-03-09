@@ -12,7 +12,7 @@ S3_ZIP_FOLDER = "zipped-files/"  # Folder in S3 for ZIP file
 ZIP_FILENAME = "processed_images.zip"  # ZIP file name in S3
 
 # GitHub Configuration
-GIT_REPO_URL = "https://github.com/your-username/your-repo.git"
+GIT_REPO_URL = https://github.com/mysticharshuuu45/terraform-cicd-task_jenkins.git
 CLONE_DIR = "/tmp/github_repo"
 
 # Initialize S3 client
