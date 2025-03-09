@@ -3,7 +3,7 @@ import io
 import zipfile
 import os
 import subprocess
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 
 # AWS Configuration
 S3_BUCKET_NAME = "fotographiya-ai-photo-bucket"
@@ -38,8 +38,31 @@ def get_image_files():
     print(f"Found {len(images)} images in repo.")
     return images
 
+def add_watermark(image):
+    """Adds an opaque 'Fotographiya' watermark with Times New Roman font."""
+    draw = ImageDraw.Draw(image)
+    
+    # Load Times New Roman font (fallback to default if unavailable)
+    try:
+        font = ImageFont.truetype("times.ttf", 12)  # Ensure 'times.ttf' is available in the system
+    except IOError:
+        font = ImageFont.load_default()  # Use default font if Times New Roman is not found
+
+    # Watermark text
+    watermark_text = "Fotographiya"
+    
+    # Get text size and set position (bottom-right corner)
+    text_width, text_height = draw.textsize(watermark_text, font)
+    width, height = image.size
+    position = (width - text_width - 10, height - text_height - 10)  # 10px margin
+
+    # Draw text in solid black (Opaque)
+    draw.text(position, watermark_text, font=font, fill="black")
+    
+    return image
+
 def process_and_upload_image(image_path, s3_folder):
-    """Processes the image and uploads different versions to S3."""
+    """Processes the image, adds a watermark, and uploads different versions to S3."""
     try:
         with Image.open(image_path) as img:
             versions = {
@@ -54,13 +77,18 @@ def process_and_upload_image(image_path, s3_folder):
                 img_resized = img.copy()
                 img_resized.thumbnail(size)
 
+                # Add watermark
+                img_watermarked = add_watermark(img_resized)
+
+                # Convert image to bytes
                 img_byte_arr = io.BytesIO()
-                img_resized.save(img_byte_arr, format=img.format)
+                img_watermarked.save(img_byte_arr, format=img.format)
                 img_byte_arr.seek(0)
 
                 filename = f"{version}_{os.path.basename(image_path)}"
                 s3_key = f"{s3_folder}{filename}"
 
+                # Upload to S3
                 s3.upload_fileobj(img_byte_arr, S3_BUCKET_NAME, s3_key)
                 print(f"Uploaded {filename} to S3: {s3_key}")
 
