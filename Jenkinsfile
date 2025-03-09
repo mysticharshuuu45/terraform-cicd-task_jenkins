@@ -9,7 +9,7 @@ pipeline {
     stages {
         stage('Clone Repository') {
             steps {
-                git url: 'https://github.com/mysticharshuuu45/terraform-cicd-task_jenkins.git'
+                git branch: 'main', url: 'https://github.com/mysticharshuuu45/terraform-cicd-task_jenkins'
             }
         }
 
