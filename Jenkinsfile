@@ -15,6 +15,7 @@ pipeline {
 
         stage('Install Dependencies') {
             steps {
+                sh 'echo "" | sudo -S apt update && sudo apt install -y python3-pip'
                 sh 'sudo apt update && sudo apt install -y python3-pip'
                 sh 'pip3 install pillow boto3'
             }
